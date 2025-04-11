@@ -21,6 +21,8 @@ package org.apache.iceberg.aws.s3;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -29,6 +31,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import org.apache.iceberg.aws.AwsClientFactory;
 import org.apache.iceberg.aws.S3FileIOAwsClientFactories;
@@ -228,7 +231,19 @@ public class S3FileIO
    * @param paths paths to delete
    */
   @Override
-  public void deleteFiles(Iterable<String> paths) throws BulkDeletionFailureException {
+  public void deleteFiles(Iterable<String> paths, Iterable<Optional<Long>> sizes)
+      throws BulkDeletionFailureException {
+
+    // Build a map of path to size
+    Map<String, Long> fileToSize = new HashMap<>();
+    Iterator<String> pathIter = paths.iterator();
+    Iterator<Optional<Long>> sizeIter = sizes.iterator();
+    while (pathIter.hasNext()) {
+      String path = pathIter.next();
+      Optional<Long> size = sizeIter.hasNext() ? sizeIter.next() : Optional.empty();
+      if (size.isPresent()) fileToSize.put(path, size.get());
+    }
+
     if (s3FileIOProperties.deleteTags() != null && !s3FileIOProperties.deleteTags().isEmpty()) {
       Tasks.foreach(paths)
           .noRetry()
@@ -273,11 +288,14 @@ public class S3FileIO
       }
 
       int totalFailedDeletions = 0;
+      AtomicLong failedFilesSize = new AtomicLong(0);
 
       for (Future<List<String>> deletionTask : deletionTasks) {
         try {
           List<String> failedDeletions = deletionTask.get();
           failedDeletions.forEach(path -> LOG.warn("Failed to delete object at path {}", path));
+          failedDeletions.forEach(
+              path -> failedFilesSize.addAndGet(fileToSize.getOrDefault(path, 0L)));
           totalFailedDeletions += failedDeletions.size();
         } catch (ExecutionException e) {
           LOG.warn("Caught unexpected exception during batch deletion: ", e.getCause());
@@ -289,7 +307,7 @@ public class S3FileIO
       }
 
       if (totalFailedDeletions > 0) {
-        throw new BulkDeletionFailureException(totalFailedDeletions);
+        throw new BulkDeletionFailureException(totalFailedDeletions, failedFilesSize.get());
       }
     }
   }

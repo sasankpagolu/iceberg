@@ -162,7 +162,8 @@ public class ExpireSnapshotsProcedure extends BaseProcedure {
             result.deletedEqualityDeleteFilesCount(),
             result.deletedManifestsCount(),
             result.deletedManifestListsCount(),
-            result.deletedStatisticsFilesCount());
+            result.deletedStatisticsFilesCount(),
+            result.deletedFilesSize());
     return new InternalRow[] {row};
   }
 

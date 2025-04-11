@@ -21,10 +21,13 @@ package org.apache.iceberg.hadoop;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -174,8 +177,21 @@ public class HadoopFileIO implements HadoopConfigurable, DelegateFileIO {
   }
 
   @Override
-  public void deleteFiles(Iterable<String> pathsToDelete) throws BulkDeletionFailureException {
+  public void deleteFiles(Iterable<String> pathsToDelete, Iterable<Optional<Long>> sizes)
+      throws BulkDeletionFailureException {
     AtomicInteger failureCount = new AtomicInteger(0);
+    AtomicLong failedFilesSize = new AtomicLong(0);
+
+    // Build a map of path to size
+    Map<String, Long> fileToSize = new HashMap<>();
+    Iterator<String> pathIter = pathsToDelete.iterator();
+    Iterator<Optional<Long>> sizeIter = sizes.iterator();
+    while (pathIter.hasNext()) {
+      String path = pathIter.next();
+      Optional<Long> size = sizeIter.hasNext() ? sizeIter.next() : Optional.empty();
+      if (size.isPresent()) fileToSize.put(path, size.get());
+    }
+
     Tasks.foreach(pathsToDelete)
         .executeWith(executorService())
         .retry(DELETE_RETRY_ATTEMPTS)
@@ -185,11 +201,12 @@ public class HadoopFileIO implements HadoopConfigurable, DelegateFileIO {
             (f, e) -> {
               LOG.error("Failure during bulk delete on file: {} ", f, e);
               failureCount.incrementAndGet();
+              failedFilesSize.addAndGet(fileToSize.getOrDefault(f, 0L));
             })
         .run(this::deleteFile);
 
     if (failureCount.get() != 0) {
-      throw new BulkDeletionFailureException(failureCount.get());
+      throw new BulkDeletionFailureException(failureCount.get(), failedFilesSize.get());
     }
   }
 

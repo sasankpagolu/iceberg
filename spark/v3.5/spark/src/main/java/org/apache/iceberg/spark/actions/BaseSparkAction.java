@@ -26,6 +26,7 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -257,8 +258,9 @@ abstract class BaseSparkAction<ThisT> {
             fileInfo -> {
               String path = fileInfo.getPath();
               String type = fileInfo.getType();
+              long size = fileInfo.getSize().orElse(0L);
               deleteFunc.accept(path);
-              summary.deletedFile(path, type);
+              summary.deletedFile(path, type, size);
             });
 
     return summary;
@@ -281,17 +283,22 @@ abstract class BaseSparkAction<ThisT> {
     ListMultimap<String, FileInfo> filesByType = Multimaps.index(fileGroup, FileInfo::getType);
     ListMultimap<String, String> pathsByType =
         Multimaps.transformValues(filesByType, FileInfo::getPath);
+    ListMultimap<String, Optional<Long>> sizesByType =
+        Multimaps.transformValues(filesByType, FileInfo::getSize);
 
     for (Map.Entry<String, Collection<String>> entry : pathsByType.asMap().entrySet()) {
       String type = entry.getKey();
       Collection<String> paths = entry.getValue();
+      Collection<Optional<Long>> sizes = sizesByType.get(type);
       int failures = 0;
+      long failedFilesSize = 0;
       try {
-        io.deleteFiles(paths);
+        io.deleteFiles(paths, sizes);
       } catch (BulkDeletionFailureException e) {
         failures = e.numberFailedObjects();
+        failedFilesSize = e.sizeofFailedObjects();
       }
-      summary.deletedFiles(type, paths.size() - failures);
+      summary.deletedFiles(type, paths.size() - failures, failedFilesSize);
     }
   }
 
@@ -303,8 +310,10 @@ abstract class BaseSparkAction<ThisT> {
     private final AtomicLong manifestListsCount = new AtomicLong(0L);
     private final AtomicLong statisticsFilesCount = new AtomicLong(0L);
     private final AtomicLong otherFilesCount = new AtomicLong(0L);
+    private final AtomicLong deletedFilesSize = new AtomicLong(0L);
 
-    public void deletedFiles(String type, int numFiles) {
+    public void deletedFiles(String type, int numFiles, long sizeofFailedFiles) {
+      deletedFilesSize.addAndGet(sizeofFailedFiles);
       if (FileContent.DATA.name().equalsIgnoreCase(type)) {
         dataFilesCount.addAndGet(numFiles);
 
@@ -331,7 +340,8 @@ abstract class BaseSparkAction<ThisT> {
       }
     }
 
-    public void deletedFile(String path, String type) {
+    public void deletedFile(String path, String type, long size) {
+      deletedFilesSize.addAndGet(size);
       if (FileContent.DATA.name().equalsIgnoreCase(type)) {
         dataFilesCount.incrementAndGet();
         LOG.trace("Deleted data file: {}", path);
@@ -420,7 +430,9 @@ abstract class BaseSparkAction<ThisT> {
       ManifestContent content = manifest.content();
       FileIO io = table.getValue().io();
       Map<Integer, PartitionSpec> specs = table.getValue().specs();
-      List<String> proj = ImmutableList.of(DataFile.FILE_PATH.name(), DataFile.CONTENT.name());
+      List<String> proj =
+          ImmutableList.of(
+              DataFile.FILE_PATH.name(), DataFile.CONTENT.name(), DataFile.FILE_SIZE.name());
 
       switch (content) {
         case DATA:
@@ -437,7 +449,7 @@ abstract class BaseSparkAction<ThisT> {
     }
 
     static FileInfo toFileInfo(ContentFile<?> file) {
-      return new FileInfo(file.location(), file.content().toString());
+      return new FileInfo(file.location(), file.content().toString(), file.fileSizeInBytes());
     }
   }
 }

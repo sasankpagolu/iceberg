@@ -18,6 +18,7 @@
  */
 package org.apache.iceberg.spark.actions;
 
+import java.util.Optional;
 import org.apache.spark.sql.Encoder;
 import org.apache.spark.sql.Encoders;
 
@@ -26,10 +27,18 @@ public class FileInfo {
 
   private String path;
   private String type;
+  private Optional<Long> size;
 
   public FileInfo(String path, String type) {
     this.path = path;
     this.type = type;
+    this.size = Optional.empty();
+  }
+
+  public FileInfo(String path, String type, Long size) {
+    this.path = path;
+    this.type = type;
+    this.size = Optional.ofNullable(size);
   }
 
   public FileInfo() {}
@@ -44,6 +53,10 @@ public class FileInfo {
 
   public String getType() {
     return type;
+  }
+
+  public Optional<Long> getSize() {
+    return size;
   }
 
   public void setType(String type) {

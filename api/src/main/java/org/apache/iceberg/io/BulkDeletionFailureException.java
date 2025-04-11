@@ -22,13 +22,25 @@ import java.util.Locale;
 
 public class BulkDeletionFailureException extends RuntimeException {
   private final int numberFailedObjects;
+  private final long sizeofFailedObjects;
 
   public BulkDeletionFailureException(int numberFailedObjects) {
     super(String.format(Locale.ROOT, "Failed to delete %d files", numberFailedObjects));
     this.numberFailedObjects = numberFailedObjects;
+    this.sizeofFailedObjects = 0;
+  }
+
+  public BulkDeletionFailureException(int numberFailedObjects, long sizeofFailedObjects) {
+    super(String.format(Locale.ROOT, "Failed to delete %d files", numberFailedObjects));
+    this.numberFailedObjects = numberFailedObjects;
+    this.sizeofFailedObjects = sizeofFailedObjects;
   }
 
   public int numberFailedObjects() {
     return numberFailedObjects;
+  }
+
+  public long sizeofFailedObjects() {
+    return sizeofFailedObjects;
   }
 }

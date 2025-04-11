@@ -26,9 +26,12 @@ import com.azure.storage.file.datalake.DataLakeFileSystemClientBuilder;
 import com.azure.storage.file.datalake.models.DataLakeStorageException;
 import com.azure.storage.file.datalake.models.ListPathsOptions;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.apache.iceberg.azure.AzureProperties;
 import org.apache.iceberg.common.DynConstructors;
 import org.apache.iceberg.io.BulkDeletionFailureException;
@@ -154,9 +157,21 @@ public class ADLSFileIO implements DelegateFileIO {
   }
 
   @Override
-  public void deleteFiles(Iterable<String> pathsToDelete) throws BulkDeletionFailureException {
+  public void deleteFiles(Iterable<String> pathsToDelete, Iterable<Optional<Long>> sizes)
+      throws BulkDeletionFailureException {
     // Azure batch operations are not supported in all cases, e.g. with a user
     // delegation SAS token, so avoid using it for now
+
+    // Build a map of path to size
+    Map<String, Long> fileToSize = new HashMap<>();
+    Iterator<String> pathIter = pathsToDelete.iterator();
+    Iterator<Optional<Long>> sizeIter = sizes.iterator();
+    while (pathIter.hasNext()) {
+      String path = pathIter.next();
+      Optional<Long> size = sizeIter.hasNext() ? sizeIter.next() : Optional.empty();
+      if (size.isPresent()) fileToSize.put(path, size.get());
+    }
+    AtomicLong failedFilesSize = new AtomicLong(0);
 
     AtomicInteger failureCount = new AtomicInteger();
     Tasks.foreach(pathsToDelete)
@@ -166,12 +181,13 @@ public class ADLSFileIO implements DelegateFileIO {
         .onFailure(
             (file, exc) -> {
               failureCount.incrementAndGet();
+              failedFilesSize.addAndGet(fileToSize.getOrDefault(file, 0L));
               LOG.warn("Failed to delete file {}", file, exc);
             })
         .run(this::deleteFile);
 
     if (failureCount.get() > 0) {
-      throw new BulkDeletionFailureException(failureCount.get());
+      throw new BulkDeletionFailureException(failureCount.get(), failedFilesSize.get());
     }
   }
 

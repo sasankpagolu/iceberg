@@ -32,6 +32,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -1889,7 +1890,8 @@ public class TestRemoveSnapshots extends TestBase {
     }
 
     @Override
-    public void deleteFiles(Iterable<String> pathsToDelete) throws BulkDeletionFailureException {
+    public void deleteFiles(Iterable<String> pathsToDelete, Iterable<Optional<Long>> sizes)
+        throws BulkDeletionFailureException {
       throw new RuntimeException("Expected to mock this function");
     }
   }
