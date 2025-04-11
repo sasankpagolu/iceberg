@@ -34,10 +34,11 @@ public interface SupportsBulkOperations extends FileIO {
   }
 
   /**
-   * Delete the files at the given paths.
+   * Deletes files and optionally tracks their sizes for reporting.
    *
-   * @param pathsToDelete The paths to delete
-   * @throws BulkDeletionFailureException in case of failure to delete at least 1 file
+   * @param pathsToDelete Paths of files to delete
+   * @param sizes Optional sizes of files (in bytes), aligned with pathsToDelete
+   * @throws BulkDeletionFailureException If deletion fails for any files
    */
   void deleteFiles(Iterable<String> pathsToDelete, Iterable<Optional<Long>> sizes)
       throws BulkDeletionFailureException;

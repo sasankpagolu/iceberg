@@ -29,6 +29,7 @@ import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.StorageOptions;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -254,7 +255,8 @@ public class GCSFileIO implements DelegateFileIO, SupportsStorageCredentials {
   }
 
   @Override
-  public void deleteFiles(Iterable<String> pathsToDelete) throws BulkDeletionFailureException {
+  public void deleteFiles(Iterable<String> pathsToDelete, Iterable<Optional<Long>> fileSizes)
+      throws BulkDeletionFailureException {
     internalDeleteFiles(Streams.stream(pathsToDelete).map(BlobId::fromGsUtilUri));
   }
 

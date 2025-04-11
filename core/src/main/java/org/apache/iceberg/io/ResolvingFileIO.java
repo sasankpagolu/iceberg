@@ -105,7 +105,8 @@ public class ResolvingFileIO
   }
 
   @Override
-  public void deleteFiles(Iterable<String> pathsToDelete) throws BulkDeletionFailureException {
+  public void deleteFiles(Iterable<String> pathsToDelete, Iterable<Optional<Long>> sizes)
+      throws BulkDeletionFailureException {
     Iterators.partition(pathsToDelete.iterator(), BATCH_SIZE)
         .forEachRemaining(
             partitioned -> {
